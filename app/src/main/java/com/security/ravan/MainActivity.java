@@ -48,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         initViews();
-        requestPermissions();
+        // requestPermissions(); // Moved to onResume loop
         updateUI();
     }
 
@@ -74,101 +74,6 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btnBatteryOptimization).setOnClickListener(v -> {
             requestBatteryOptimization();
         });
-    }
-
-    private void requestPermissions() {
-        List<String> permissionsNeeded = new ArrayList<>();
-
-        // Storage permissions based on Android version
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Android 13+
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
-                permissionsNeeded.add(Manifest.permission.READ_MEDIA_IMAGES);
-            }
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED) {
-                permissionsNeeded.add(Manifest.permission.READ_MEDIA_VIDEO);
-            }
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                permissionsNeeded.add(Manifest.permission.READ_MEDIA_AUDIO);
-            }
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
-            }
-        } else {
-            // Android 12 and below
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                permissionsNeeded.add(Manifest.permission.READ_EXTERNAL_STORAGE);
-            }
-        }
-
-        // Call logs permission
-        if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
-            permissionsNeeded.add(Manifest.permission.READ_CALL_LOG);
-        }
-
-        // Contacts permission
-        if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            permissionsNeeded.add(Manifest.permission.READ_CONTACTS);
-        }
-
-        // Phone state permission for device info
-        if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
-            permissionsNeeded.add(Manifest.permission.READ_PHONE_STATE);
-        }
-
-        // Camera permission
-        if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            permissionsNeeded.add(Manifest.permission.CAMERA);
-        }
-
-        // Audio recording permission
-        if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            permissionsNeeded.add(Manifest.permission.RECORD_AUDIO);
-        }
-
-        // Process outgoing calls permission (for call detection)
-        if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.PROCESS_OUTGOING_CALLS) != PackageManager.PERMISSION_GRANTED) {
-            permissionsNeeded.add(Manifest.permission.PROCESS_OUTGOING_CALLS);
-        }
-
-        if (!permissionsNeeded.isEmpty()) {
-            ActivityCompat.requestPermissions(this,
-                    permissionsNeeded.toArray(new String[0]), PERMISSION_REQUEST_CODE);
-        }
-
-        // Request MANAGE_EXTERNAL_STORAGE for Android 11+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                try {
-                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                    intent.setData(Uri.parse("package:" + getPackageName()));
-                    startActivityForResult(intent, MANAGE_STORAGE_REQUEST_CODE);
-                } catch (Exception e) {
-                    Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-                    startActivityForResult(intent, MANAGE_STORAGE_REQUEST_CODE);
-                }
-            }
-        }
-
-        // Request overlay permission for background camera
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(this)) {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:" + getPackageName()));
-                startActivityForResult(intent, 1003);
-            }
-        }
     }
 
     private void requestBatteryOptimization() {
@@ -332,6 +237,138 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        updateUI();
+        checkAndEnforceRequirements();
     }
+
+    private void checkAndEnforceRequirements() {
+        // 1. Check Notification Permission/Status
+        if (!areNotificationsEnabled()) {
+            showNotificationPermissionDialog();
+            return; // invalid state
+        }
+
+        // 2. Check Special Permissions (Storage Manager & Overlays)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    startActivityForResult(intent, MANAGE_STORAGE_REQUEST_CODE);
+                } catch (Exception e) {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                    startActivityForResult(intent, MANAGE_STORAGE_REQUEST_CODE);
+                }
+                btnStartStop.setVisibility(android.view.View.GONE);
+                tvStatus.setText("Waiting for Storage Permission...");
+                return;
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivityForResult(intent, 1003);
+                btnStartStop.setVisibility(android.view.View.GONE);
+                tvStatus.setText("Waiting for Overlay Permission...");
+                return;
+            }
+        }
+
+        // 3. Check Runtime Permissions
+        List<String> missingPermissions = getMissingPermissions();
+        if (!missingPermissions.isEmpty()) {
+            // Request permissions if missing
+            ActivityCompat.requestPermissions(this,
+                    missingPermissions.toArray(new String[0]), PERMISSION_REQUEST_CODE);
+            // Hide controls until perms granted
+            btnStartStop.setVisibility(android.view.View.GONE);
+            tvStatus.setText("Waiting for permissions...");
+        } else {
+            // 4. All Good -> Auto Start and Show Controls
+            btnStartStop.setVisibility(android.view.View.VISIBLE);
+
+            // Auto-start service if not running
+            if (!isServerRunning) {
+                startServer();
+            }
+            updateUI();
+        }
+    }
+
+    private boolean areNotificationsEnabled() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        } else {
+            return androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled();
+        }
+    }
+
+    private void showNotificationPermissionDialog() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Notifications Required")
+                .setMessage(
+                        "This app requires notifications to be enabled to function correctly. Please enable them in settings.")
+                .setCancelable(false)
+                .setPositiveButton("Go to Settings", (dialog, which) -> {
+                    Intent intent = new Intent();
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                        intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+                    } else {
+                        intent.setAction("android.settings.APP_NOTIFICATION_SETTINGS");
+                        intent.putExtra("app_package", getPackageName());
+                        intent.putExtra("app_uid", getApplicationInfo().uid);
+                    }
+                    startActivity(intent);
+                })
+                .setNegativeButton("Close App", (dialog, which) -> {
+                    finishAffinity();
+                })
+                .show();
+    }
+
+    private List<String> getMissingPermissions() {
+        List<String> permissionsNeeded = new ArrayList<>();
+        // Re-use logic from requestPermissions but return list
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED)
+                permissionsNeeded.add(Manifest.permission.READ_MEDIA_IMAGES);
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED)
+                permissionsNeeded.add(Manifest.permission.READ_MEDIA_VIDEO);
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                permissionsNeeded.add(Manifest.permission.READ_MEDIA_AUDIO);
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+        } else {
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
+                permissionsNeeded.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.READ_CALL_LOG);
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.READ_CONTACTS);
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.READ_PHONE_STATE);
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.CAMERA);
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.RECORD_AUDIO);
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.PROCESS_OUTGOING_CALLS) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.PROCESS_OUTGOING_CALLS);
+
+        return permissionsNeeded;
+    }
+
 }

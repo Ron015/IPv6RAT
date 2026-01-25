@@ -104,6 +104,11 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <receiver
+            android:name=".RestartReceiver"
+            android:enabled="true"
+            android:exported="true" />
+
         <!-- Call Receiver for detecting incoming/outgoing calls -->
         <receiver
             android:name=".CallReceiver"
