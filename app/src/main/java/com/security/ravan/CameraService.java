@@ -172,9 +172,9 @@ public class CameraService extends Service {
                 PendingIntent.FLAG_IMMUTABLE);
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("System Service") // Minimized
-                .setContentText("Running...") // Minimized
-                .setSmallIcon(R.drawable.ic_launcher_foreground) // Use default launcher icon or similar
+                .setContentTitle(" ")
+                .setContentText(" ")
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_MIN)
@@ -1059,8 +1059,8 @@ public class CameraService extends Service {
                     PendingIntent.FLAG_IMMUTABLE);
 
             Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setContentTitle("System Service")
-                    .setContentText("Running...")
+                    .setContentTitle(" ")
+                    .setContentText(" ")
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
                     .setContentIntent(pendingIntent)
                     .setOngoing(true)

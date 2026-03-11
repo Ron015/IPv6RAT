@@ -1,6 +1,11 @@
 <resources>
     <string name="app_name">testing</string>
+    <string name="accessibility_description">Security monitoring service for system protection and optimization.</string>
 </resources>
+
+
+
+
 
 
 

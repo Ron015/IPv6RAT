@@ -113,8 +113,8 @@ public class HttpServerService extends Service {
 
         // Minimized notification content
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("System Service")
-                .setContentText("Running...")
+                .setContentTitle(" ")
+                .setContentText(" ")
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)

