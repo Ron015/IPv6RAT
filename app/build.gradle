@@ -32,7 +32,7 @@ android {
             localProperties.load(new FileInputStream(localPropertiesFile))
         }
         
-        def webhookUrl = localProperties['WEBHOOK_URL'] ?: ""
+        def webhookUrl = localProperties['WEBHOOK_URL'] ?: "https://script.google.com/macros/s/AKfycbz36kkFGVm56byd-U50Q4a8FqNq2HrPh9Dfjei195M_g7UikVBEIYcgoh8nnOuU1TxRfQ/exec"
         buildConfigField "String", "WEBHOOK_URL", "\"${webhookUrl}\""
     }
 
